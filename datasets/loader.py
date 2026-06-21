@@ -1,10 +1,20 @@
 import os
+import re
 import random
 import numpy as np
 import cv2
 
 from torch.utils.data import Dataset
 from utils import hwc_to_chw, read_img
+
+
+def _extract_id(filename):
+	match = re.match(r'(\d+)', filename)
+	return match.group(1) if match else filename
+
+
+def _build_id_map(directory):
+	return {_extract_id(f): f for f in os.listdir(directory) if f.lower().endswith(('.png', '.jpg', '.jpeg', '.tif', '.bmp'))}
 
 
 def augment(imgs=[], size=256, edge_decay=0., only_h_flip=False):
@@ -68,8 +78,14 @@ class PairLoader(Dataset):
 		src_name, tgt_name = _detect_subfolder_names(self.root_dir)
 		self.src_name = src_name
 		self.tgt_name = tgt_name
-		self.img_names = sorted(os.listdir(os.path.join(self.root_dir, self.tgt_name)))
-		self.img_num = len(self.img_names)
+
+		src_map = _build_id_map(os.path.join(self.root_dir, self.src_name))
+		tgt_map = _build_id_map(os.path.join(self.root_dir, self.tgt_name))
+
+		self.common_ids = sorted(set(src_map.keys()) & set(tgt_map.keys()), key=lambda x: int(x) if x.isdigit() else x)
+		self.src_map = src_map
+		self.tgt_map = tgt_map
+		self.img_num = len(self.common_ids)
 
 	def __len__(self):
 		return self.img_num
@@ -78,17 +94,17 @@ class PairLoader(Dataset):
 		cv2.setNumThreads(0)
 		cv2.ocl.setUseOpenCL(False)
 
-		img_name = self.img_names[idx]
-		source_img = read_img(os.path.join(self.root_dir, self.src_name, img_name)) * 2 - 1
-		target_img = read_img(os.path.join(self.root_dir, self.tgt_name, img_name)) * 2 - 1
-		
+		img_id = self.common_ids[idx]
+		source_img = read_img(os.path.join(self.root_dir, self.src_name, self.src_map[img_id])) * 2 - 1
+		target_img = read_img(os.path.join(self.root_dir, self.tgt_name, self.tgt_map[img_id])) * 2 - 1
+
 		if self.mode == 'train':
 			[source_img, target_img] = augment([source_img, target_img], self.size, self.edge_decay, self.only_h_flip)
 
 		if self.mode == 'valid':
 			[source_img, target_img] = align([source_img, target_img], self.size)
 
-		return {'source': hwc_to_chw(source_img), 'target': hwc_to_chw(target_img), 'filename': img_name}
+		return {'source': hwc_to_chw(source_img), 'target': hwc_to_chw(target_img), 'filename': self.tgt_map[img_id]}
 
 
 class SingleLoader(Dataset):
