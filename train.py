@@ -103,7 +103,7 @@ def valid(val_loader, network):
 		down_ratio = max(1, round(min(H, W) / 256))
 		ssim_val = ssim(F.adaptive_avg_pool2d(output_norm, (int(H / down_ratio), int(W / down_ratio))),
 						F.adaptive_avg_pool2d(target_norm, (int(H / down_ratio), int(W / down_ratio))),
-						data_range=1, size_average=False).item()
+						data_range=1, size_average=True).item()
 		SSIM_meter.update(ssim_val, source_img.size(0))
 
 		sam_val = calculate_sam(output_norm, target_norm)
